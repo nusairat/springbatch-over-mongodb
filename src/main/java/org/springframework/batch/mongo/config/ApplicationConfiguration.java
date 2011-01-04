@@ -26,8 +26,11 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.javaconfig.util.ConfigurationSupport;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
-
+import org.springframework.beans.factory.BeanFactoryAware;
 import java.net.UnknownHostException;
+
+import javax.annotation.Resource;
+import java.lang.reflect.Method;
 
 /**
  * Created by IntelliJ IDEA.
@@ -66,6 +69,10 @@ public class ApplicationConfiguration {
     @Autowired
     private StepExecutionDao stepExecutionDao;
 
+//    @Autowired
+    @Resource(name="mongo")
+    private Object mongoInjected;
+    
     public static final String DOT_ESCAPE_STRING = "\\{dot\\}";
     public static final String DOT_STRING = "\\.";
 
@@ -125,16 +132,44 @@ public class ApplicationConfiguration {
     @Bean
     @Database(Database.Purpose.APPLICATION)
     public DB applicationDb() throws UnknownHostException {
-        return mongo().getDB(appDbName);
+      return getDatabase(appDbName);
     }
 
     @Bean
     @Database(Database.Purpose.BATCH)
     public DB batchDb() throws UnknownHostException {
-        return mongo().getDB(batchDbName);
+      return getDatabase(batchDbName);
+    }
+    
+    private DB getDatabase(String dbName) throws UnknownHostException {
+      System.out.println("What is the mongoInjected property " + mongoInjected);      
+      if (mongoInjected == null) {
+        mongoInjected = mongo();
+      }
+      // Now acccess it via a declared method
+      if (mongoInjected instanceof Mongo) {
+        return mongo().getDB(dbName);
+      }
+      else {
+        // Probably GMongo ... just call it this way or some other getDB screw ball item        
+        try {
+          Class[] argTypes = new Class[] { String.class };              
+          Method main = mongoInjected.getClass().getDeclaredMethod("getDB", argTypes);
+          Object db = main.invoke(mongoInjected, dbName);
+          return (DB) db;
+        } catch(NoSuchMethodException e) {
+          System.out.println("No such method exception: " + e.getMessage());
+        } catch(java.lang.IllegalAccessException e) {
+          System.out.println("Illegal Access: " + e.getMessage());
+        } catch(java.lang.reflect.InvocationTargetException e) {
+          System.out.println("Invoation Target: " + e.getMessage());
+        }
+        
+      }
+      return null;
     }
 
-    @Bean
+//    @Bean
     public Mongo mongo() throws UnknownHostException {
         return new Mongo();
     }
@@ -143,6 +178,4 @@ public class ApplicationConfiguration {
     public PlatformTransactionManager transactionManager() {
         return new ResourcelessTransactionManager();
     }
-
-
 }
